@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/layers/generic_box.h"
 #include "ui/wrap/padding_wrap.h"
 #include "ui/text/format_values.h"
+#include "ui/toast/toast.h"
 #include "lang/lang_keys.h"
 #include "core/application.h"
 #include "calls/calls_call.h"
@@ -34,6 +35,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_layers.h"
 
 namespace Calls {
+
+enum class BarState {
+	Connecting,
+	Active,
+	Muted,
+	ForceMuted,
+};
+
 namespace {
 
 constexpr auto kMaxUsersInBar = 3;
@@ -42,56 +51,71 @@ constexpr auto kSwitchStateDuration = 120;
 
 constexpr auto kMinorBlobAlpha = 76. / 255.;
 
-constexpr auto kBlobLevelDuration1 = 250;
-constexpr auto kBlobLevelDuration2 = 120;
+constexpr auto kHideBlobsDuration = crl::time(500);
+constexpr auto kBlobLevelDuration = crl::time(250);
 constexpr auto kBlobUpdateInterval = crl::time(100);
 
-auto LinearBlobs() -> std::array<Ui::Paint::LinearBlobs::BlobData, 3> {
-	return { {
+auto BarStateFromMuteState(MuteState state, bool connecting) {
+	return (connecting
+		? BarState::Connecting
+		: state == MuteState::ForceMuted
+		? BarState::ForceMuted
+		: state == MuteState::Muted
+		? BarState::Muted
+		: BarState::Active);
+};
+
+auto LinearBlobs() {
+	return std::vector<Ui::Paint::LinearBlobs::BlobData>{
 		{
 			.segmentsCount = 5,
-			.minScale = 1.,
-			.minRadius = (float)st::groupCallMajorBlobMinRadius,
+			.minRadius = 0.,
 			.maxRadius = (float)st::groupCallMajorBlobMaxRadius,
+			.idleRadius = (float)st::groupCallMinorBlobIdleRadius,
 			.speedScale = .3,
 			.alpha = 1.,
-			.topOffset = st::groupCallMajorBlobTopOffset,
 		},
 		{
 			.segmentsCount = 7,
-			.minScale = 1.,
-			.minRadius = (float)st::groupCallMinorBlobMinRadius,
+			.minRadius = 0.,
 			.maxRadius = (float)st::groupCallMinorBlobMaxRadius,
+			.idleRadius = (float)st::groupCallMinorBlobIdleRadius,
 			.speedScale = .7,
 			.alpha = kMinorBlobAlpha,
-			.topOffset = st::groupCallMinorBlobTopOffset,
 		},
 		{
 			.segmentsCount = 8,
-			.minScale = 1.,
-			.minRadius = (float)st::groupCallMinorBlobMinRadius,
+			.minRadius = 0.,
 			.maxRadius = (float)st::groupCallMinorBlobMaxRadius,
+			.idleRadius = (float)st::groupCallMinorBlobIdleRadius,
 			.speedScale = .7,
 			.alpha = kMinorBlobAlpha,
-			.topOffset = st::groupCallMinorBlobTopOffset,
 		},
-	} };
+	};
 }
 
 auto Colors() {
 	using Vector = std::vector<QColor>;
-	return base::flat_map<MuteState, Vector>{
+	using Colors = anim::gradient_colors;
+	return base::flat_map<BarState, Colors>{
 		{
-			MuteState::ForceMuted,
-			Vector{ st::groupCallMembersBg->c, st::groupCallMembersBg->c }
+			BarState::ForceMuted,
+			Colors(QGradientStops{
+				{ 0.0, st::groupCallForceMutedBar1->c },
+				{ .35, st::groupCallForceMutedBar2->c },
+				{ 1.0, st::groupCallForceMutedBar3->c } })
 		},
 		{
-			MuteState::Active,
-			Vector{ st::groupCallLive1->c, st::groupCallLive2->c }
+			BarState::Active,
+			Colors(Vector{ st::groupCallLive1->c, st::groupCallLive2->c })
 		},
 		{
-			MuteState::Muted,
-			Vector{ st::groupCallMuted1->c, st::groupCallMuted2->c }
+			BarState::Muted,
+			Colors(Vector{ st::groupCallMuted1->c, st::groupCallMuted2->c })
+		},
+		{
+			BarState::Connecting,
+			Colors(st::callBarBgMuted->c)
 		},
 	};
 }
@@ -242,7 +266,9 @@ void TopBar::initControls() {
 		if (const auto call = _call.get()) {
 			call->setMuted(!call->muted());
 		} else if (const auto group = _groupCall.get()) {
-			if (group->muted() != MuteState::ForceMuted) {
+			if (group->muted() == MuteState::ForceMuted) {
+				Ui::Toast::Show(tr::lng_group_call_force_muted(tr::now));
+			} else {
 				group->setMuted((group->muted() == MuteState::Muted)
 					? MuteState::Active
 					: MuteState::Muted);
@@ -253,27 +279,36 @@ void TopBar::initControls() {
 	const auto mapToState = [](bool muted) {
 		return muted ? MuteState::Muted : MuteState::Active;
 	};
-	const auto fromState = _mute->lifetime().make_state<MuteState>(
-		_call ? mapToState(_call->muted()) : _groupCall->muted());
+	const auto fromState = _mute->lifetime().make_state<BarState>(
+		BarStateFromMuteState(
+			_call
+				? mapToState(_call->muted())
+				: _groupCall->muted(),
+			false));
 	auto muted = _call
-		? _call->mutedValue() | rpl::map(mapToState)
-		: (_groupCall->mutedValue()
-			| MapPushToTalkToActive()
-			| rpl::distinct_until_changed()
-			| rpl::type_erased());
+		? rpl::combine(
+			_call->mutedValue() | rpl::map(mapToState),
+			rpl::single(false)) | rpl::type_erased()
+		: rpl::combine(
+			(_groupCall->mutedValue()
+				| MapPushToTalkToActive()
+				| rpl::distinct_until_changed()
+				| rpl::type_erased()),
+			_groupCall->connectingValue());
 	std::move(
 		muted
-	) | rpl::start_with_next([=](MuteState state) {
-		setMuted(state != MuteState::Active);
+	) | rpl::map(
+		BarStateFromMuteState
+	) | rpl::start_with_next([=](BarState state) {
+		_isGroupConnecting = (state == BarState::Connecting);
+		setMuted(state != BarState::Active);
 		update();
 
-		const auto isForceMuted = (state == MuteState::ForceMuted);
+		const auto isForceMuted = (state == BarState::ForceMuted);
 		if (isForceMuted) {
 			_mute->clearState();
 		}
-		_mute->setAttribute(
-			Qt::WA_TransparentForMouseEvents,
-			isForceMuted);
+		_mute->setPointerCursor(!isForceMuted);
 
 		const auto to = 1.;
 		const auto from = _switchStateAnimation.animating()
@@ -283,8 +318,8 @@ void TopBar::initControls() {
 		const auto toMuted = state;
 		*fromState = state;
 
-		const auto crossFrom = (fromMuted != MuteState::Active) ? 1. : 0.;
-		const auto crossTo = (toMuted != MuteState::Active) ? 1. : 0.;
+		const auto crossFrom = (fromMuted != BarState::Active) ? 1. : 0.;
+		const auto crossTo = (toMuted != BarState::Active) ? 1. : 0.;
 
 		auto animationCallback = [=](float64 value) {
 			if (_groupCall) {
@@ -295,7 +330,7 @@ void TopBar::initControls() {
 
 			const auto crossProgress = (crossFrom == crossTo)
 				? crossTo
-				: (crossFrom + float64(crossTo - crossFrom) * value);
+				: anim::interpolateF(crossFrom, crossTo, value);
 			_mute->setProgress(crossProgress);
 		};
 
@@ -310,6 +345,14 @@ void TopBar::initControls() {
 
 	if (const auto group = _groupCall.get()) {
 		subscribeToMembersChanges(group);
+
+		_isGroupConnecting.value(
+		) | rpl::start_with_next([=](bool isConnecting) {
+			_mute->setAttribute(
+				Qt::WA_TransparentForMouseEvents,
+				isConnecting);
+			updateInfoLabels();
+		}, lifetime());
 	}
 
 	if (const auto call = _call.get()) {
@@ -340,11 +383,15 @@ void TopBar::initControls() {
 		if (const auto call = _call.get()) {
 			call->hangup();
 		} else if (const auto group = _groupCall.get()) {
-			Ui::show(Box(
-				LeaveGroupCallBox,
-				group,
-				false,
-				BoxContext::MainWindow));
+			if (!group->peer()->canManageGroupCall()) {
+				group->hangup();
+			} else {
+				Ui::show(Box(
+					LeaveGroupCallBox,
+					group,
+					false,
+					BoxContext::MainWindow));
+			}
 		}
 	});
 	updateDurationText();
@@ -358,14 +405,12 @@ void TopBar::initBlobsUnder(
 		return;
 	}
 
-	static constexpr auto kHideDuration = kBlobLevelDuration1 * 2;
-
 	struct State {
 		Ui::Paint::LinearBlobs paint = {
-			LinearBlobs() | ranges::to_vector,
-			kBlobLevelDuration1,
-			kBlobLevelDuration2,
-			1.
+			LinearBlobs(),
+			kBlobLevelDuration,
+			1.,
+			Ui::Paint::LinearBlob::Direction::TopDown
 		};
 		Ui::Animations::Simple hideAnimation;
 		Ui::Animations::Basic animation;
@@ -374,8 +419,6 @@ void TopBar::initBlobsUnder(
 		crl::time lastTime = 0;
 		float lastLevel = 0.;
 		float levelBeforeLast = 0.;
-		int maxHeight = st::groupCallMinorBlobMinRadius
-			+ st::groupCallMinorBlobMaxRadius;
 	};
 
 	_blobs = base::make_unique_q<Ui::RpWidget>(blobsParent);
@@ -392,7 +435,7 @@ void TopBar::initBlobsUnder(
 
 	state->animation.init([=](crl::time now) {
 		if (const auto last = state->hideLastTime; (last > 0)
-			&& (now - last >= kHideDuration)) {
+			&& (now - last >= kHideBlobsDuration)) {
 			state->animation.stop();
 			return false;
 		}
@@ -413,23 +456,14 @@ void TopBar::initBlobsUnder(
 	auto hideBlobs = rpl::combine(
 		rpl::single(anim::Disabled()) | rpl::then(anim::Disables()),
 		Core::App().appDeactivatedValue(),
-		group->stateValue(
-		) | rpl::map([](Calls::GroupCall::State state) {
-			using State = Calls::GroupCall::State;
-			if (state != State::Creating
-				&& state != State::Joining
-				&& state != State::Joined
-				&& state != State::Connecting) {
-				return true;
-			}
-			return false;
-		}) | rpl::distinct_until_changed()
-	) | rpl::map([](bool animDisabled, bool hide, bool isBadState) {
-		return isBadState || animDisabled || hide;
+		group->connectingValue()
+	) | rpl::map([](bool animDisabled, bool hide, bool connecting) {
+		return connecting || animDisabled || hide;
 	});
 
 	std::move(
 		hideBlobs
+	) | rpl::distinct_until_changed(
 	) | rpl::start_with_next([=](bool hide) {
 		if (hide) {
 			state->paint.setLevel(0.);
@@ -448,7 +482,7 @@ void TopBar::initBlobsUnder(
 		const auto to = hide ? 1. : 0.;
 		state->hideAnimation.start([=](float64) {
 			_blobs->update();
-		}, from, to, kHideDuration);
+		}, from, to, kHideBlobsDuration);
 	}, lifetime());
 
 	std::move(
@@ -456,7 +490,7 @@ void TopBar::initBlobsUnder(
 	) | rpl::start_with_next([=](QRect rect) {
 		_blobs->resize(
 			rect.width(),
-			std::min(state->maxHeight, rect.height()));
+			(int)state->paint.maxRadius());
 		_blobs->moveToLeft(rect.x(), rect.y() + rect.height());
 	}, lifetime());
 
@@ -478,12 +512,9 @@ void TopBar::initBlobsUnder(
 			p.setOpacity(1. - hidden);
 		}
 		const auto top = -_blobs->height() * hidden;
-		const auto drawUnder = QRect(
-			0,
-			top,
-			_blobs->width() + st::groupCallBlobWidthAdditional,
-			0);
-		state->paint.paint(p, _groupBrush, drawUnder, 0, 0);
+		const auto width = _blobs->width();
+		p.translate(0, top);
+		state->paint.paint(p, _groupBrush, width);
 	}, _blobs->lifetime());
 
 	group->levelUpdates(
@@ -612,8 +643,11 @@ void TopBar::setInfoLabels() {
 	} else if (const auto group = _groupCall.get()) {
 		const auto peer = group->peer();
 		const auto name = peer->name;
-		_fullInfoLabel->setText(name.toUpper());
-		_shortInfoLabel->setText(name.toUpper());
+		const auto text = _isGroupConnecting.current()
+			? tr::lng_group_call_connecting(tr::now)
+			: name.toUpper();
+		_fullInfoLabel->setText(text);
+		_shortInfoLabel->setText(text);
 	}
 }
 

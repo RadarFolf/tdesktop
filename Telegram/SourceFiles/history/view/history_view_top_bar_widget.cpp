@@ -493,15 +493,15 @@ void TopBarWidget::infoClicked() {
 	} else if (key.folder()) {
 		_controller->closeFolder();
 	//} else if (const auto feed = _activeChat.feed()) { // #feed
-	//	_controller->showSection(Info::Memento(
+	//	_controller->showSection(std::make_shared<Info::Memento>(
 	//		feed,
 	//		Info::Section(Info::Section::Type::Profile)));
 	} else if (key.peer()->isSelf()) {
-		_controller->showSection(Info::Memento(
+		_controller->showSection(std::make_shared<Info::Memento>(
 			key.peer(),
 			Info::Section(Storage::SharedMediaType::Photo)));
 	} else if (key.peer()->isRepliesChat()) {
-		_controller->showSection(Info::Memento(
+		_controller->showSection(std::make_shared<Info::Memento>(
 			key.peer(),
 			Info::Section(Storage::SharedMediaType::Photo)));
 	} else {
@@ -647,7 +647,8 @@ void TopBarWidget::updateControlsGeometry() {
 	}
 	_infoToggle->moveToRight(_rightTaken, otherButtonsTop);
 	if (!_infoToggle->isHidden()) {
-		_rightTaken += _infoToggle->width() + st::topBarSkip;
+		_infoToggle->moveToRight(_rightTaken, otherButtonsTop);
+		_rightTaken += _infoToggle->width();
 	}
 	if (!_call->isHidden() || !_groupCall->isHidden()) {
 		_call->moveToRight(_rightTaken, otherButtonsTop);

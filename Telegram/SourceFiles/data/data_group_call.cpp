@@ -288,13 +288,15 @@ void GroupCall::applyParticipantsSlice(
 				_userBySsrc.emplace(value.ssrc, user);
 				_participants.push_back(value);
 				_peer->owner().unregisterInvitedToCallUser(_id, user);
-				++changedCount;
 			} else {
 				if (i->ssrc != value.ssrc) {
 					_userBySsrc.erase(i->ssrc);
 					_userBySsrc.emplace(value.ssrc, user);
 				}
 				*i = value;
+			}
+			if (data.is_just_joined()) {
+				++changedCount;
 			}
 			if (sliceSource != ApplySliceSource::SliceLoaded) {
 				_participantUpdates.fire({
@@ -340,7 +342,10 @@ void GroupCall::applyParticipantsMutes(
 	}
 }
 
-void GroupCall::applyLastSpoke(uint32 ssrc, crl::time when, crl::time now) {
+void GroupCall::applyLastSpoke(
+		uint32 ssrc,
+		LastSpokeTimes when,
+		crl::time now) {
 	const auto i = _userBySsrc.find(ssrc);
 	if (i == end(_userBySsrc)) {
 		_unknownSpokenSsrcs[ssrc] = when;
@@ -351,10 +356,13 @@ void GroupCall::applyLastSpoke(uint32 ssrc, crl::time when, crl::time now) {
 	Assert(j != end(_participants));
 
 	_speakingByActiveFinishes.remove(j->user);
-	const auto speaking = (when + kSpeakStatusKeptFor >= now)
+	const auto sounding = (when.anything + kSoundStatusKeptFor >= now)
 		&& j->canSelfUnmute;
-	if (j->speaking != speaking) {
+	const auto speaking = sounding
+		&& (when.voice + kSoundStatusKeptFor >= now);
+	if (j->sounding != sounding || j->speaking != speaking) {
 		const auto was = *j;
+		j->sounding = sounding;
 		j->speaking = speaking;
 		_participantUpdates.fire({
 			.was = was,
@@ -365,7 +373,7 @@ void GroupCall::applyLastSpoke(uint32 ssrc, crl::time when, crl::time now) {
 
 void GroupCall::applyActiveUpdate(
 		UserId userId,
-		crl::time when,
+		LastSpokeTimes when,
 		UserData *userLoaded) {
 	if (inCall()) {
 		return;
@@ -385,9 +393,9 @@ void GroupCall::applyActiveUpdate(
 	}
 	const auto was = std::make_optional(*i);
 	const auto now = crl::now();
-	const auto elapsed = TimeId((now - when) / crl::time(1000));
+	const auto elapsed = TimeId((now - when.anything) / crl::time(1000));
 	const auto lastActive = base::unixtime::now() - elapsed;
-	const auto finishes = when + kSpeakingAfterActive;
+	const auto finishes = when.anything + kSpeakingAfterActive;
 	if (lastActive <= i->lastActive || finishes <= now) {
 		return;
 	}
@@ -448,7 +456,7 @@ void GroupCall::requestUnknownParticipants() {
 		if (_unknownSpokenSsrcs.size() < kRequestPerPage) {
 			return base::take(_unknownSpokenSsrcs);
 		}
-		auto result = base::flat_map<uint32, crl::time>();
+		auto result = base::flat_map<uint32, LastSpokeTimes>();
 		result.reserve(kRequestPerPage);
 		while (result.size() < kRequestPerPage) {
 			const auto [ssrc, when] = _unknownSpokenSsrcs.back();
@@ -461,7 +469,7 @@ void GroupCall::requestUnknownParticipants() {
 		if (_unknownSpokenUids.size() + ssrcs.size() < kRequestPerPage) {
 			return base::take(_unknownSpokenUids);
 		}
-		auto result = base::flat_map<UserId, crl::time>();
+		auto result = base::flat_map<UserId, LastSpokeTimes>();
 		const auto available = (kRequestPerPage - int(ssrcs.size()));
 		if (available > 0) {
 			result.reserve(available);
