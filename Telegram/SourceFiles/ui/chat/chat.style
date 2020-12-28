@@ -18,6 +18,13 @@ MessageBar {
 	duration: int;
 }
 
+GroupCallUserpics {
+	size: pixels;
+	shift: pixels;
+	stroke: pixels;
+	align: align;
+}
+
 defaultMessageBar: MessageBar {
 	title: semiboldTextStyle;
 	titleFg: windowActiveTextFg;
@@ -345,14 +352,12 @@ historyRecordFont: font(13px);
 historyRecordDurationSkip: 12px;
 historyRecordDurationFg: historyComposeAreaFg;
 
-historyRecordLevelMainRadius: 23px;
-historyRecordLevelMainRadiusAmplitude: 14px;
-historyRecordMajorAmplitudeRadius: 14px;
-historyRecordMinorAmplitudeRadius: 7px;
-historyRecordRandomAddition: 8px;
-historyRecordRadiusDiff: 50px;
-historyRecordRadiusDiffMin: 10px;
-historyRecordLevelMaxRadius: 70px;
+historyRecordMainBlobMinRadius: 23px;
+historyRecordMainBlobMaxRadius: 37px;
+historyRecordMinorBlobMinRadius: 40px;
+historyRecordMinorBlobMaxRadius: 47px;
+historyRecordMajorBlobMinRadius: 43px;
+historyRecordMajorBlobMaxRadius: 50px;
 
 historyRecordTextStyle: TextStyle(defaultTextStyle) {
 	font: historyRecordFont;
@@ -741,10 +746,13 @@ historyPollInChosenSelected: icon {{ "poll_select_check", historyFileInIconFgSel
 historyCommentsButtonHeight: 40px;
 historyCommentsSkipLeft: 9px;
 historyCommentsSkipText: 10px;
-historyCommentsUserpicSize: 25px;
-historyCommentsUserpicStroke: 2px;
-historyCommentsUserpicOverlap: 6px;
 historyCommentsSkipRight: 8px;
+historyCommentsUserpics: GroupCallUserpics {
+	size: 25px;
+	shift: 6px;
+	stroke: 2px;
+	align: align(left);
+}
 
 boxAttachEmoji: IconButton(historyAttachEmoji) {
 	width: 30px;
@@ -800,9 +808,12 @@ historyCommentsOpenOutSelected: icon {{ "history_comments_open", msgFileThumbLin
 
 historySlowmodeCounterMargins: margins(0px, 0px, 10px, 0px);
 
-historyGroupCallUserpicSize: 32px;
-historyGroupCallUserpicShift: 12px;
-historyGroupCallUserpicStroke: 4px;
+historyGroupCallUserpics: GroupCallUserpics {
+	size: 32px;
+	shift: 12px;
+	stroke: 4px;
+	align: align(top);
+}
 historyGroupCallBlobMinRadius: 23px;
 historyGroupCallBlobMaxRadius: 25px;
 

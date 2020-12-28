@@ -60,6 +60,7 @@ PRIVATE
     desktop-app::external_rlottie
     desktop-app::external_zlib
     desktop-app::external_minizip
+    desktop-app::external_qt_static_plugins
     desktop-app::external_qt
     desktop-app::external_qr_code_generator
     desktop-app::external_crash_reports
@@ -71,9 +72,6 @@ PRIVATE
 if (LINUX)
     target_link_libraries(Telegram
     PRIVATE
-        desktop-app::external_nimf_qt5
-        desktop-app::external_qt5ct_support
-        desktop-app::external_xcb_screensaver
         desktop-app::external_xcb
         desktop-app::external_glib
     )
@@ -83,28 +81,19 @@ if (LINUX)
         PRIVATE
             desktop-app::external_statusnotifieritem
             desktop-app::external_dbusmenu_qt
-            desktop-app::external_fcitx_qt5
-            desktop-app::external_fcitx5_qt5
-            desktop-app::external_hime_qt
         )
     endif()
 
-    if (NOT DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION)
-        target_link_libraries(Telegram
+    if (DESKTOP_APP_USE_PACKAGED
+        AND NOT DESKTOP_APP_DISABLE_WAYLAND_INTEGRATION
+        AND Qt5WaylandClient_VERSION VERSION_LESS 5.13.0)
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
+
+        target_include_directories(Telegram
         PRIVATE
-            desktop-app::external_materialdecoration
+            ${WAYLAND_CLIENT_INCLUDE_DIRS}
         )
-
-        if (DESKTOP_APP_USE_PACKAGED
-            AND Qt5WaylandClient_VERSION VERSION_LESS 5.13.0)
-            find_package(PkgConfig REQUIRED)
-            pkg_check_modules(WAYLAND_CLIENT REQUIRED wayland-client)
-
-            target_include_directories(Telegram
-            PRIVATE
-                ${WAYLAND_CLIENT_INCLUDE_DIRS}
-            )
-        endif()
     endif()
 
     if (NOT TDESKTOP_DISABLE_GTK_INTEGRATION)
@@ -235,6 +224,8 @@ PRIVATE
     boxes/peer_list_box.h
     boxes/peer_list_controllers.cpp
     boxes/peer_list_controllers.h
+    boxes/peer_lists_box.cpp
+    boxes/peer_lists_box.h
     boxes/passcode_box.cpp
     boxes/passcode_box.h
     boxes/photo_crop_box.cpp
@@ -821,6 +812,8 @@ PRIVATE
     platform/linux/linux_desktop_environment.h
     platform/linux/linux_gdk_helper.cpp
     platform/linux/linux_gdk_helper.h
+    platform/linux/linux_gsd_media_keys.cpp
+    platform/linux/linux_gsd_media_keys.h
     platform/linux/linux_libs.cpp
     platform/linux/linux_libs.h
     platform/linux/linux_wayland_integration.cpp
@@ -1098,7 +1091,6 @@ PRIVATE
     mainwidget.h
     mainwindow.cpp
     mainwindow.h
-    qt_static_plugins.cpp
     settings.cpp
     settings.h
     stdafx.h
@@ -1108,6 +1100,13 @@ if (NOT LINUX)
     remove_target_sources(Telegram ${src_loc}
         window/window_title_qt.cpp
         window/window_title_qt.h
+    )
+endif()
+
+if (LINUX AND DESKTOP_APP_DISABLE_DBUS_INTEGRATION)
+    remove_target_sources(Telegram ${src_loc}
+        platform/linux/linux_gsd_media_keys.cpp
+        platform/linux/linux_gsd_media_keys.h
     )
 endif()
 

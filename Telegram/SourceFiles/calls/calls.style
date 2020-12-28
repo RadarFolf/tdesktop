@@ -9,6 +9,7 @@ using "ui/basic.style";
 
 using "ui/widgets/widgets.style";
 using "ui/layers/layers.style";
+using "ui/chat/chat.style"; // GroupCallUserpics
 using "window/window.style";
 
 CallSignalBars {
@@ -477,11 +478,17 @@ groupCallMembersListItem: PeerListItem(defaultPeerListItem) {
 groupCallMembersList: PeerList(defaultPeerList) {
 	bg: groupCallMembersBg;
 	about: FlatLabel(defaultPeerListAbout) {
-		textFg: groupCallMemberInactiveStatus;
+		textFg: groupCallMemberNotJoinedStatus;
 	}
 	item: groupCallMembersListItem;
 }
+groupCallInviteDividerLabel: FlatLabel(defaultFlatLabel) {
+	textFg: groupCallMemberNotJoinedStatus;
+}
+groupCallInviteDividerPadding: margins(17px, 7px, 17px, 7px);
+
 groupCallInviteMembersList: PeerList(groupCallMembersList) {
+	padding: margins(0px, 10px, 0px, 10px);
 	item: PeerListItem(groupCallMembersListItem) {
 		statusFg: groupCallMemberNotJoinedStatus;
 		statusFgOver: groupCallMemberNotJoinedStatus;
@@ -599,9 +606,12 @@ groupCallButtonSkip: 43px;
 groupCallButtonBottomSkip: 145px;
 groupCallMuteBottomSkip: 160px;
 
-groupCallTopBarUserpicSize: 28px;
-groupCallTopBarUserpicShift: 8px;
-groupCallTopBarUserpicStroke: 2px;
+groupCallTopBarUserpics: GroupCallUserpics {
+	size: 28px;
+	shift: 8px;
+	stroke: 2px;
+	align: align(left);
+}
 groupCallTopBarJoin: RoundButton(defaultActiveButton) {
 	width: -26px;
 	height: 26px;
