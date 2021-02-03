@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "platform/platform_main_window.h"
+#include "base/unique_qptr.h"
 
 namespace Ui {
 class PopupMenu;
@@ -25,11 +26,6 @@ typedef struct _GDBusProxy GDBusProxy;
 #endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
 
 namespace Platform {
-#ifndef DESKTOP_APP_DISABLE_DBUS_INTEGRATION
-namespace internal {
-class GSDMediaKeys;
-} // namespace internal
-#endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
 
 class MainWindow : public Window::MainWindow {
 public:
@@ -48,7 +44,7 @@ public:
 		return _sniAvailable || QSystemTrayIcon::isSystemTrayAvailable();
 	}
 
-	static void LibsLoaded();
+	bool isActiveForTrayMenu() override;
 
 	~MainWindow();
 
@@ -80,7 +76,7 @@ protected:
 
 private:
 	bool _sniAvailable = false;
-	Ui::PopupMenu *_trayIconMenuXEmbed = nullptr;
+	base::unique_qptr<Ui::PopupMenu> _trayIconMenuXEmbed;
 
 	void updateIconCounters();
 	void updateWaylandDecorationColors();
@@ -92,9 +88,6 @@ private:
 
 	bool _appMenuSupported = false;
 	DBusMenuExporter *_mainMenuExporter = nullptr;
-	QString _mainMenuPath;
-
-	std::unique_ptr<internal::GSDMediaKeys> _gsdMediaKeys;
 
 	QMenu *psMainMenu = nullptr;
 	QAction *psLogout = nullptr;

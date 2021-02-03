@@ -1161,11 +1161,7 @@ void PeerListContent::enterEventHook(QEvent *e) {
 
 void PeerListContent::leaveEventHook(QEvent *e) {
 	setMouseTracking(false);
-	if (_mouseSelection) {
-		setSelected(Selected());
-		_mouseSelection = false;
-		_lastMousePosition = std::nullopt;
-	}
+	mouseLeftGeometry();
 }
 
 void PeerListContent::mouseMoveEvent(QMouseEvent *e) {
@@ -1440,7 +1436,10 @@ PeerListContent::SkipResult PeerListContent::selectSkip(int direction) {
 	}
 
 	// Snap the index.
-	newSelectedIndex = snap(newSelectedIndex, firstEnabled - 1, lastEnabled);
+	newSelectedIndex = std::clamp(
+		newSelectedIndex,
+		firstEnabled - 1,
+		lastEnabled);
 
 	// Skip the disabled rows.
 	if (newSelectedIndex < firstEnabled) {
@@ -1495,6 +1494,14 @@ bool PeerListContent::hasPressed() const {
 
 void PeerListContent::clearSelection() {
 	setSelected(Selected());
+}
+
+void PeerListContent::mouseLeftGeometry() {
+	if (_mouseSelection) {
+		setSelected(Selected());
+		_mouseSelection = false;
+		_lastMousePosition = std::nullopt;
+	}
 }
 
 void PeerListContent::loadProfilePhotos() {

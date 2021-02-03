@@ -84,7 +84,7 @@ public:
 		int till) const;
 	void elementStartStickerLoop(not_null<const Element*> view);
 	[[nodiscard]] crl::time elementHighlightTime(
-		not_null<const Element*> view);
+		not_null<const HistoryItem*> item);
 	void elementShowPollResults(
 		not_null<PollData*> poll,
 		FullMsgId context);
@@ -213,8 +213,6 @@ private:
 	// if it returns false the enumeration stops immidiately.
 	template <typename Method>
 	void enumerateDates(Method method);
-
-	ClickHandlerPtr hiddenUserpicLink(FullMsgId id);
 
 	void scrollDateCheck();
 	void scrollDateHideByTimer();

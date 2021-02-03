@@ -174,6 +174,7 @@ void SaveChatParticipantKick(
 		Fn<void()> onDone,
 		Fn<void()> onFail) {
 	chat->session().api().request(MTPmessages_DeleteChatUser(
+		MTP_flags(0),
 		chat->inputChat,
 		user->inputUser
 	)).done([=](const MTPUpdates &result) {
@@ -358,7 +359,7 @@ bool ParticipantsAdditionalData::canRemoveUser(
 	if (canRestrictUser(user)) {
 		return true;
 	} else if (const auto chat = _peer->asChat()) {
-		return chat->invitedByMe.contains(user);
+		return !user->isSelf() && chat->invitedByMe.contains(user);
 	}
 	return false;
 }
@@ -1212,6 +1213,9 @@ void ParticipantsBoxController::rebuildChatAdmins(
 		return true;
 	}();
 	if (same) {
+		if (!_allLoaded && !delegate()->peerListFullRowsCount()) {
+			chatListReady();
+		}
 		return;
 	}
 

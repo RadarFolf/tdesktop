@@ -273,9 +273,10 @@ HistoryItem *HistoryItem::lookupDiscussionPostOriginal() const {
 PeerData *HistoryItem::displayFrom() const {
 	if (const auto sender = discussionPostOriginalSender()) {
 		return sender;
-	} else if (history()->peer->isSelf()
-		|| history()->peer->isRepliesChat()) {
-		return senderOriginal();
+	} else if (const auto forwarded = Get<HistoryMessageForwarded>()) {
+		if (history()->peer->isSelf() || history()->peer->isRepliesChat() || forwarded->imported) {
+			return forwarded->originalSender;
+		}
 	}
 	return author().get();
 }
@@ -760,27 +761,6 @@ void HistoryItem::updateDate(TimeId newDate) {
 
 bool HistoryItem::canUpdateDate() const {
 	return isScheduled();
-}
-
-bool HistoryItem::canBeEditedFromHistory() const {
-	// Skip if message is editing media.
-	if (isEditingMedia()) {
-		return false;
-	}
-	// Skip if message is video message or sticker.
-	if (const auto m = media()) {
-		// Skip only if media is not webpage.
-		if (!m->webpage() && !m->allowsEditCaption()) {
-			return false;
-		}
-	}
-	if ((IsServerMsgId(id) || isScheduled())
-		&& !serviceMsg()
-		&& (out() || history()->peer->isSelf())
-		&& !Has<HistoryMessageForwarded>()) {
-		return true;
-	}
-	return false;
 }
 
 void HistoryItem::sendFailed() {
